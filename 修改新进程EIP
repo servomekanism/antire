@@ -1,0 +1,73 @@
+#include <windows.h>
+#include <tchar.h>
+#include <stdio.h>
+
+
+void ChildProc()
+{
+    MessageBox(NULL, L"This is a child process!", L"DebugMe2", MB_OK);
+
+    ExitProcess(0);
+}
+
+
+void _tmain(int argc, TCHAR *argv[]) 
+{
+    TCHAR                   szPath[MAX_PATH] = {0,};
+    STARTUPINFO				si = {sizeof(STARTUPINFO),};
+    PROCESS_INFORMATION		pi = {0,};
+    CONTEXT                 ctx = {0,};
+
+    _tprintf(L"This is a parent process!\n");
+
+    if( !GetModuleFileName(NULL, szPath, sizeof(TCHAR) * MAX_PATH) )//获取自身的绝对路径
+    {
+        printf("GetModuleFileName() failed! [%d]\n", GetLastError());
+        return;
+    }
+
+    // Create Child Process 创建挂起状态的子进程
+    if( !CreateProcess(
+            szPath,
+            NULL,
+            NULL,
+            NULL,
+            FALSE,
+            CREATE_SUSPENDED,
+            NULL,
+            NULL,
+            &si,
+            &pi) )
+    {
+        printf("CreateProcess() failed! [%d]\n", GetLastError());
+        return;
+    }
+
+    // Change EIP
+    ctx.ContextFlags = CONTEXT_FULL;//初始化ConText
+    if( !GetThreadContext(pi.hThread, &ctx) )//获取挂起线程的上下文
+    {
+        printf("GetThreadContext() failed! [%d]\n", GetLastError());
+        return;
+    }
+
+    ctx.Eip = (DWORD)ChildProc;
+
+    if( !SetThreadContext(pi.hThread, &ctx) )//设置子进程EIP
+    {
+        printf("SetThreadContext() failed! [%d]\n", GetLastError());
+        return;
+    }
+
+    // Resume Main Thread
+    if( -1 == ResumeThread(pi.hThread) )//恢复进程
+    {
+        printf("ResumeThread() failed! [%d]\n", GetLastError());
+        return;
+    }
+
+    WaitForSingleObject(pi.hProcess, INFINITE);//阻塞等待
+
+    CloseHandle(pi.hProcess);
+    CloseHandle(pi.hThread);
+}
